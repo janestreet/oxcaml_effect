@@ -1,9 +1,11 @@
+
+
 module Obj = struct
   include Stdlib.Obj
   include Basement.Stdlib_shim.Obj
 end
 
-module Modes = Basement.Stdlib_shim.Modes
+module Modes = Base.Modes
 
 module Handler_index : sig @@ portable
   (** [(es1, es2) t] represents an index into the effect list [es2]. [es1] is the tail
@@ -95,6 +97,7 @@ end
 module Handler : sig @@ portable
   (** [e t] is a handler for the effect [e]. *)
   type 'e t' = private ..
+
 
   (** Heap-allocated handler. *)
   type 'e t = { h : 'e t' @@ aliased global } [@@unboxed]
@@ -319,7 +322,9 @@ end
 type ('a, 'e) op
 type ('a, 'e) perform = ('a, 'e) op * 'e Handler.t'
 
-external perform_ : ('a, 'e) perform -> 'a @@ portable = "%perform"
+(* [perform_] is able to return a unique value because [continue] is required
+   to provide a unique value. *)
+external perform_ : ('a, 'e) perform -> 'a @ unique @@ portable = "%perform"
 
 (* A last_fiber is a tagged pointer, so does not keep the fiber alive.
    It must never be the sole reference to the fiber, and is only used to cache
@@ -391,10 +396,13 @@ module Must_not_enter_gc = struct
     @@ portable
     = "%resume"
 
+  let is_runtime5 () = Basement.Stdlib_shim.runtime5 ()
+
   (* Allocate a stack and immediately run [f x] using that stack.
      We must not enter the GC between [alloc_stack] and [runstack].
      [with_stack] is marked as [@inline never] to avoid reordering. *)
   let[@inline never] with_stack valuec exnc effc f x =
+    if not (is_runtime5 ()) then failwith "Effects require the OCaml 5 runtime.";
     runstack (alloc_stack valuec exnc effc) f x
   ;;
 
@@ -402,6 +410,7 @@ module Must_not_enter_gc = struct
      We must not enter the GC between [take_cont_noexc] and [resume].
      [with_cont] is marked as [@inline never] to avoid reordering. *)
   let[@inline never] with_cont cont f x =
+    if not (is_runtime5 ()) then failwith "Effects require the OCaml 5 runtime.";
     let fiber, cont = borrow (fun k -> cont_last_fiber k) cont in
     resume (take_cont_noexc cont) f x fiber
   ;;
@@ -587,25 +596,25 @@ let run_with
    Wrappers provide the handler at [portable], but require [portable]
    arguments and operations, which are marked as [contended]. *)
 module DRF : sig @@ portable
-  val fiber
-    : ('a : value mod portable) 'b 'e.
-    ('e Handler.t @ local portable -> 'a @ contended -> 'b) @ once
-    -> ('a, 'b, 'e, unit) continuation @ unique
+  
 
-  val fiber_with
-    : ('a : value mod portable) 'b 'e 'es.
-    'es Handler.List.Length.t @ local
-    -> (('e * 'es) Handler.List.t @ local portable -> 'a @ contended -> 'b) @ once
-    -> ('a, 'b, 'e, 'es) continuation @ unique
+val fiber :
+  ('a : value mod portable) 'b 'e .
+    once_ (local_ 'e Handler.t @ portable -> 'a @ contended -> 'b) -> unique_
+      ('a, 'b, 'e, unit) continuation
+val fiber_with :
+  ('a : value mod portable) 'b 'e 'es .
+    local_ 'es Handler.List.Length.t ->
+      once_
+        (local_ ('e * 'es) Handler.List.t @ portable -> 'a @ contended -> 'b)
+        -> unique_ ('a, 'b, 'e, 'es) continuation
+val run :
+  once_ (local_ 'e Handler.t @ portable -> 'a) -> unique_ ('a, 'e, unit) res
+val run_with :
+  local_ 'es Handler.List.t @ portable ->
+    once_ (local_ ('e * 'es) Handler.List.t @ portable -> 'a) -> unique_
+      ('a, 'e, 'es) res
 
-  val run : ('e Handler.t @ local portable -> 'a) @ once -> ('a, 'e, unit) res @ unique
-  (* Returns a [res] to be [Obj.magic]ed into the contended result type with [op @@ contended]. *)
-
-  val run_with
-    :  'es Handler.List.t @ local portable
-    -> (('e * 'es) Handler.List.t @ local portable -> 'a) @ once
-    -> ('a, 'e, 'es) res @ unique
-  (* Returns a [res] to be [Obj.magic]ed into the contended result type with [op @@ contended]. *)
 end = struct
   let[@inline] fiber f =
     let f h a = f (Obj.magic_portable h) (Obj.magic_portable a) [@nontail] in
@@ -693,23 +702,22 @@ module type S = sig @@ portable
         ('o, t) ops @@ aliased global * ('o, ('a, 'es) result, 'es) Continuation.t
         -> ('a, 'es) result
 
-  val fiber
-    :  (t Handler.t @ local -> 'a -> 'b) @ once
-    -> ('a, ('b, unit) Result.t, unit) Continuation.t @ unique
+  
 
-  val fiber_with
-    :  'es Handler.List.Length.t @ local
-    -> ((t * 'es) Handler.List.t @ local -> 'a -> 'b) @ once
-    -> ('a, ('b, 'es) Result.t, 'es) Continuation.t @ unique
+val fiber :
+  once_ (local_ t Handler.t -> 'a -> 'b) -> unique_
+    ('a, ('b, unit) Result.t, unit) Continuation.t
+val fiber_with :
+  local_ 'es Handler.List.Length.t ->
+    once_ (local_ (t * 'es) Handler.List.t -> 'a -> 'b) -> unique_
+      ('a, ('b, 'es) Result.t, 'es) Continuation.t
+val run : once_ (local_ t Handler.t -> 'a) -> unique_ ('a, unit) Result.t
+val run_with :
+  local_ 'es Handler.List.t ->
+    once_ (local_ (t * 'es) Handler.List.t -> 'a) -> unique_
+      ('a, 'es) Result.t
 
-  val run : (t Handler.t @ local -> 'a) @ once -> ('a, unit) Result.t @ unique
-
-  val run_with
-    :  'es Handler.List.t @ local
-    -> ((t * 'es) Handler.List.t @ local -> 'a) @ once
-    -> ('a, 'es) Result.t @ unique
-
-  val perform : t Handler.t @ local -> ('a, t) ops -> 'a
+  val perform : t Handler.t @ local -> ('a, t) ops -> 'a @ unique
 
   module Contended : sig
     module Result : sig
@@ -724,28 +732,29 @@ module type S = sig @@ portable
             -> ('a, 'es) t
     end
 
-    val fiber
-      : ('a : value mod portable) 'b.
-      (t Handler.t @ local portable -> 'a @ contended -> 'b) @ once
-      -> ('a, ('b, unit) Result.t, unit) Continuation.t @ unique
+    
 
-    val fiber_with
-      : ('a : value mod portable) 'b 'es.
-      'es Handler.List.Length.t @ local
-      -> ((t * 'es) Handler.List.t @ local portable -> 'a @ contended -> 'b) @ once
-      -> ('a, ('b, 'es) Result.t, 'es) Continuation.t @ unique
-
-    val run : (t Handler.t @ local portable -> 'a) @ once -> ('a, unit) Result.t @ unique
-
-    val run_with
-      :  'es Handler.List.t @ local portable
-      -> ((t * 'es) Handler.List.t @ local portable -> 'a) @ once
-      -> ('a, 'es) Result.t @ unique
+val fiber :
+  ('a : value mod portable) 'b .
+    once_ (local_ t Handler.t @ portable -> 'a @ contended -> 'b) -> unique_
+      ('a, ('b, unit) Result.t, unit) Continuation.t
+val fiber_with :
+  ('a : value mod portable) 'b 'es .
+    local_ 'es Handler.List.Length.t ->
+      once_
+        (local_ (t * 'es) Handler.List.t @ portable -> 'a @ contended -> 'b)
+        -> unique_ ('a, ('b, 'es) Result.t, 'es) Continuation.t
+val run :
+  once_ (local_ t Handler.t @ portable -> 'a) -> unique_ ('a, unit) Result.t
+val run_with :
+  local_ 'es Handler.List.t @ portable ->
+    once_ (local_ (t * 'es) Handler.List.t @ portable -> 'a) -> unique_
+      ('a, 'es) Result.t
 
     val perform
       :  t Handler.t @ contended local
       -> ('a, t) ops @ portable
-      -> 'a @ contended
+      -> 'a @ contended unique
   end
 
   module Handler : sig
@@ -790,23 +799,23 @@ module type S1 = sig @@ portable
         * ('o, ('a, 'p, 'es) result, 'es) Continuation.t
         -> ('a, 'p, 'es) result
 
-  val fiber
-    :  ('p t Handler.t @ local -> 'a -> 'b) @ once
-    -> ('a, ('b, 'p, unit) Result.t, unit) Continuation.t @ unique
+  
 
-  val fiber_with
-    :  'es Handler.List.Length.t @ local
-    -> (('p t * 'es) Handler.List.t @ local -> 'a -> 'b) @ once
-    -> ('a, ('b, 'p, 'es) Result.t, 'es) Continuation.t @ unique
+val fiber :
+  once_ (local_ 'p t Handler.t -> 'a -> 'b) -> unique_
+    ('a, ('b, 'p, unit) Result.t, unit) Continuation.t
+val fiber_with :
+  local_ 'es Handler.List.Length.t ->
+    once_ (local_ ('p t * 'es) Handler.List.t -> 'a -> 'b) -> unique_
+      ('a, ('b, 'p, 'es) Result.t, 'es) Continuation.t
+val run :
+  once_ (local_ 'p t Handler.t -> 'a) -> unique_ ('a, 'p, unit) Result.t
+val run_with :
+  local_ 'es Handler.List.t ->
+    once_ (local_ ('p t * 'es) Handler.List.t -> 'a) -> unique_
+      ('a, 'p, 'es) Result.t
 
-  val run : ('p t Handler.t @ local -> 'a) @ once -> ('a, 'p, unit) Result.t @ unique
-
-  val run_with
-    :  'es Handler.List.t @ local
-    -> (('p t * 'es) Handler.List.t @ local -> 'a) @ once
-    -> ('a, 'p, 'es) Result.t @ unique
-
-  val perform : 'p t Handler.t @ local -> ('a, 'p, 'p t) ops -> 'a
+  val perform : 'p t Handler.t @ local -> ('a, 'p, 'p t) ops -> 'a @ unique
 
   module Contended : sig
     module Result : sig
@@ -821,30 +830,31 @@ module type S1 = sig @@ portable
             -> ('a, 'p, 'es) t
     end
 
-    val fiber
-      : ('a : value mod portable) 'b 'p.
-      ('p t Handler.t @ local portable -> 'a @ contended -> 'b) @ once
-      -> ('a, ('b, 'p, unit) Result.t, unit) Continuation.t @ unique
+    
 
-    val fiber_with
-      : ('a : value mod portable) 'b 'p 'es.
-      'es Handler.List.Length.t @ local
-      -> (('p t * 'es) Handler.List.t @ local portable -> 'a @ contended -> 'b) @ once
-      -> ('a, ('b, 'p, 'es) Result.t, 'es) Continuation.t @ unique
-
-    val run
-      :  ('p t Handler.t @ local portable -> 'a) @ once
-      -> ('a, 'p, unit) Result.t @ unique
-
-    val run_with
-      :  'es Handler.List.t @ local portable
-      -> (('p t * 'es) Handler.List.t @ local portable -> 'a) @ once
-      -> ('a, 'p, 'es) Result.t @ unique
+val fiber :
+  ('a : value mod portable) 'b 'p .
+    once_ (local_ 'p t Handler.t @ portable -> 'a @ contended -> 'b) ->
+      unique_ ('a, ('b, 'p, unit) Result.t, unit) Continuation.t
+val fiber_with :
+  ('a : value mod portable) 'b 'p 'es .
+    local_ 'es Handler.List.Length.t ->
+      once_
+        (local_ ('p t * 'es) Handler.List.t @ portable ->
+           'a @ contended -> 'b)
+        -> unique_ ('a, ('b, 'p, 'es) Result.t, 'es) Continuation.t
+val run :
+  once_ (local_ 'p t Handler.t @ portable -> 'a) -> unique_
+    ('a, 'p, unit) Result.t
+val run_with :
+  local_ 'es Handler.List.t @ portable ->
+    once_ (local_ ('p t * 'es) Handler.List.t @ portable -> 'a) -> unique_
+      ('a, 'p, 'es) Result.t
 
     val perform
       :  'p t Handler.t @ contended local
       -> ('a, 'p, 'p t) ops @ portable
-      -> 'a @ contended
+      -> 'a @ contended unique
   end
 
   module Handler : sig
@@ -891,25 +901,27 @@ module type S2 = sig @@ portable
         * ('o, ('a, 'p, 'q, 'es) result, 'es) Continuation.t
         -> ('a, 'p, 'q, 'es) result
 
-  val fiber
-    :  (('p, 'q) t Handler.t @ local -> 'a -> 'b) @ once
-    -> ('a, ('b, 'p, 'q, unit) result, unit) Continuation.t @ unique
+  
 
-  val fiber_with
-    :  'es Handler.List.Length.t @ local
-    -> ((('p, 'q) t * 'es) Handler.List.t @ local -> 'a -> 'b) @ once
-    -> ('a, ('b, 'p, 'q, 'es) result, 'es) Continuation.t @ unique
+val fiber :
+  once_ (local_ ('p, 'q) t Handler.t -> 'a -> 'b) -> unique_
+    ('a, ('b, 'p, 'q, unit) result, unit) Continuation.t
+val fiber_with :
+  local_ 'es Handler.List.Length.t ->
+    once_ (local_ (('p, 'q) t * 'es) Handler.List.t -> 'a -> 'b) -> unique_
+      ('a, ('b, 'p, 'q, 'es) result, 'es) Continuation.t
+val run :
+  once_ (local_ ('p, 'q) t Handler.t -> 'a) -> unique_
+    ('a, 'p, 'q, unit) result
+val run_with :
+  local_ 'es Handler.List.t ->
+    once_ (local_ (('p, 'q) t * 'es) Handler.List.t -> 'a) -> unique_
+      ('a, 'p, 'q, 'es) result
 
-  val run
-    :  (('p, 'q) t Handler.t @ local -> 'a) @ once
-    -> ('a, 'p, 'q, unit) result @ unique
-
-  val run_with
-    :  'es Handler.List.t @ local
-    -> ((('p, 'q) t * 'es) Handler.List.t @ local -> 'a) @ once
-    -> ('a, 'p, 'q, 'es) result @ unique
-
-  val perform : ('p, 'q) t Handler.t @ local -> ('a, 'p, 'q, ('p, 'q) t) ops -> 'a
+  val perform
+    :  ('p, 'q) t Handler.t @ local
+    -> ('a, 'p, 'q, ('p, 'q) t) ops
+    -> 'a @ unique
 
   module Contended : sig
     module Result : sig
@@ -924,31 +936,32 @@ module type S2 = sig @@ portable
             -> ('a, 'p, 'q, 'es) t
     end
 
-    val fiber
-      : ('a : value mod portable) 'b 'p 'q.
-      (('p, 'q) t Handler.t @ local portable -> 'a @ contended -> 'b) @ once
-      -> ('a, ('b, 'p, 'q, unit) Result.t, unit) Continuation.t @ unique
+    
 
-    val fiber_with
-      : ('a : value mod portable) 'b 'p 'q 'es.
-      'es Handler.List.Length.t @ local
-      -> ((('p, 'q) t * 'es) Handler.List.t @ local portable -> 'a @ contended -> 'b)
-         @ once
-      -> ('a, ('b, 'p, 'q, 'es) Result.t, 'es) Continuation.t @ unique
+val fiber :
+  ('a : value mod portable) 'b 'p 'q .
+    once_ (local_ ('p, 'q) t Handler.t @ portable -> 'a @ contended -> 'b) ->
+      unique_ ('a, ('b, 'p, 'q, unit) Result.t, unit) Continuation.t
+val fiber_with :
+  ('a : value mod portable) 'b 'p 'q 'es .
+    local_ 'es Handler.List.Length.t ->
+      once_
+        (local_ (('p, 'q) t * 'es) Handler.List.t @ portable ->
+           'a @ contended -> 'b)
+        -> unique_ ('a, ('b, 'p, 'q, 'es) Result.t, 'es) Continuation.t
+val run :
+  once_ (local_ ('p, 'q) t Handler.t @ portable -> 'a) -> unique_
+    ('a, 'p, 'q, unit) Result.t
+val run_with :
+  local_ 'es Handler.List.t @ portable ->
+    once_ (local_ (('p, 'q) t * 'es) Handler.List.t @ portable -> 'a) ->
+      unique_ ('a, 'p, 'q, 'es) Result.t
 
-    val run
-      :  (('p, 'q) t Handler.t @ local portable -> 'a) @ once
-      -> ('a, 'p, 'q, unit) Result.t @ unique
-
-    val run_with
-      :  'es Handler.List.t @ local portable
-      -> ((('p, 'q) t * 'es) Handler.List.t @ local portable -> 'a) @ once
-      -> ('a, 'p, 'q, 'es) Result.t @ unique
 
     val perform
       :  ('p, 'q) t Handler.t @ contended local
       -> ('a, 'p, 'q, ('p, 'q) t) ops @ portable
-      -> 'a @ contended
+      -> 'a @ contended unique
   end
 
   module Handler : sig
