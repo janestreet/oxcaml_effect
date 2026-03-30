@@ -328,15 +328,17 @@ external get_cont_callstack
   -> Printexc.raw_backtrace
   = "caml_get_continuation_callstack"
 
-external cont_last_fiber : ('a, 'b) cont -> last_fiber = "%field1"
 external cont_set_last_fiber : ('a, 'b) cont -> last_fiber -> unit = "%setfield1"
 
 type 'b effc = { effc : 'o 'e. ('o, 'e) perform -> ('o, 'b) cont -> last_fiber -> 'b }
 [@@unboxed]
 
+let is_runtime5 () = Basement.Stdlib_shim.runtime5 ()
+
+external cont_last_fiber : ('a, 'b) cont -> last_fiber = "%field1"
+external cont_set_last_fiber : ('a, 'b) cont -> last_fiber -> unit = "%setfield1"
+
 module Must_not_enter_gc = struct
-  (* Stacks are represented as tagged pointers, so do not keep the fiber alive. We must
-     not enter the GC between the creation and use of a [stack]. *)
   type (-'a, +'b) stack [@@immediate]
 
   external alloc_stack
@@ -357,24 +359,20 @@ module Must_not_enter_gc = struct
   external resume : ('a, 'b) stack -> ('c -> 'a) -> 'c -> last_fiber -> 'b = "%resume"
 
   let is_runtime5 () = Basement.Stdlib_shim.runtime5 ()
-
-  (* Allocate a stack and immediately run [f x] using that stack. We must not enter the GC
-     between [alloc_stack] and [runstack]. [with_stack] is marked as [@inline never] to
-     avoid reordering. *)
-  let[@inline never] with_stack valuec exnc effc f x =
-    if not (is_runtime5 ()) then failwith "Effects require the OCaml 5 runtime.";
-    runstack (alloc_stack valuec exnc effc) f x
-  ;;
-
-  (* Retrieve the stack from a [cont]inuation and run [f x] using it. We must not enter
-     the GC between [take_cont_noexc] and [resume]. [with_cont] is marked as
-     [@inline never] to avoid reordering. *)
-  let[@inline never] with_cont cont f x =
-    if not (is_runtime5 ()) then failwith "Effects require the OCaml 5 runtime.";
-    let fiber, cont = borrow (fun k -> cont_last_fiber k) cont in
-    resume (take_cont_noexc cont) f x fiber
-  ;;
 end
+
+let with_stack valuec exnc effc f x =
+  if not (is_runtime5 ()) then failwith "Effects require the OCaml 5 runtime.";
+  Must_not_enter_gc.runstack (Must_not_enter_gc.alloc_stack valuec exnc effc) f x
+[@@inline never]
+;;
+
+let with_cont cont f x =
+  if not (is_runtime5 ()) then failwith "Effects require the OCaml 5 runtime.";
+  let fiber, cont = borrow (fun k -> cont_last_fiber k) cont in
+  Must_not_enter_gc.resume (Must_not_enter_gc.take_cont_noexc cont) f x fiber
+[@@inline never]
+;;
 
 type (+'a, 'es) r =
   | Val : 'a -> ('a, 'es) r
@@ -413,9 +411,7 @@ let alloc_cont
   in
   let dummy_op : (a, e) op = Obj.magic () in
   let p = Handler.Dummy, dummy_op in
-  match
-    Must_not_enter_gc.with_stack valuec exnc { effc } (fun () -> f h (perform_ p)) ()
-  with
+  match with_stack valuec exnc { effc } (fun () -> f h (perform_ p)) () with
   | _ -> assert false
   (* [Ready__ k] is only ever raised once with an unique [k]. However, raised exceptions
      must have the legacy mode, so we can't get rid of [magic_unique] here. *)
@@ -434,7 +430,7 @@ let run_stack
     | H.C h -> Op (op, h, k, last_fiber)
     | _ -> reperform perf k last_fiber
   in
-  Must_not_enter_gc.with_stack valuec exnc { effc } f h
+  with_stack valuec exnc { effc } f h
 ;;
 
 type (-'a, +'b, 'e, 'es) continuation =
@@ -476,7 +472,7 @@ let rec handle : type a e es. es Mapping.t -> (a, e * es) r -> (a, e, es) res =
 
 let resume (Cont { cont; mapping }) f x handlers =
   Mapping.set handlers mapping;
-  handle mapping (Must_not_enter_gc.with_cont cont f x)
+  handle mapping (with_cont cont f x)
 ;;
 
 let continue k v hs = resume k (fun x -> x) v hs
