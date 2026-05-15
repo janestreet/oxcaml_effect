@@ -17,7 +17,7 @@ depends: [
   "ppx_template"
   "dune"         {>= "3.17.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
 synopsis: "Handled effects API for OxCaml"
 description: "
 Handled_effect provides an effect-safe wrapper for algebraic effects

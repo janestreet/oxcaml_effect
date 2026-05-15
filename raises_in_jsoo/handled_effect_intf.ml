@@ -124,7 +124,14 @@ module Definitions (Handler : Handler) (Continuation : Continuation) = struct
        and type ('a, _, _, 'es) result := ('a, 'es) result
 
     module Result : sig
-      type ('a, 'es) t = ('a, 'es) result
+      type eff := t
+
+      type ('a, 'es) t = ('a, 'es) result =
+        | Value : 'a -> ('a, 'es) t
+        | Exception : exn -> ('a, 'es) t
+        | Operation :
+            ('o, eff) ops * ('o, ('a, 'es) result, 'es) Continuation.t
+            -> ('a, 'es) t
     end
   end
 
@@ -192,7 +199,14 @@ module Definitions (Handler : Handler) (Continuation : Continuation) = struct
        and type ('a, 'p, _, 'e) result := ('a, 'p, 'e) result
 
     module Result : sig
-      type ('a, 'p, 'es) t = ('a, 'p, 'es) result
+      type 'p eff := 'p t
+
+      type ('a, 'p, 'es) t = ('a, 'p, 'es) result =
+        | Value : 'a -> ('a, 'p, 'es) t
+        | Exception : exn -> ('a, 'p, 'es) t
+        | Operation :
+            ('o, 'p, 'p eff) ops * ('o, ('a, 'p, 'es) result, 'es) Continuation.t
+            -> ('a, 'p, 'es) t
     end
   end
 
@@ -261,7 +275,15 @@ module Definitions (Handler : Handler) (Continuation : Continuation) = struct
        and type ('a, 'p, 'q, 'es) result := ('a, 'p, 'q, 'es) result
 
     module Result : sig
-      type ('a, 'p, 'q, 'es) t = ('a, 'p, 'q, 'es) result
+      type ('p, 'q) eff := ('p, 'q) t
+
+      type ('a, 'p, 'q, 'es) t = ('a, 'p, 'q, 'es) result =
+        | Value : 'a -> ('a, 'p, 'q, 'es) t
+        | Exception : exn -> ('a, 'p, 'q, 'es) t
+        | Operation :
+            ('o, 'p, 'q, ('p, 'q) eff) ops
+            * ('o, ('a, 'p, 'q, 'es) result, 'es) Continuation.t
+            -> ('a, 'p, 'q, 'es) t
     end
   end
 
