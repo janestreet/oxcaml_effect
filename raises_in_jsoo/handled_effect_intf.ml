@@ -136,7 +136,15 @@ module Definitions (Handler : Handler) (Continuation : Continuation) = struct
        and type ('a, _, _, 'es) result := ('a, 'es) result
 
     module Result : sig @@ portable
-      type ('a, 'es) t = ('a, 'es) result
+      type eff := t
+
+      type ('a, 'es) t = ('a, 'es) result =
+        | Value : 'a @@ global many -> ('a, 'es) t
+        | Exception : exn @@ global many -> ('a, 'es) t
+        | Operation :
+            ('o, eff) ops @@ c_arg global many
+            * ('o, ('a, 'es) result, 'es) Continuation.t @@ p_res
+            -> ('a, 'es) t
     end
   end
 
@@ -205,7 +213,15 @@ module Definitions (Handler : Handler) (Continuation : Continuation) = struct
        and type ('a, 'p, _, 'e) result := ('a, 'p, 'e) result
 
     module Result : sig @@ portable
-      type ('a, 'p, 'es) t = ('a, 'p, 'es) result
+      type 'p eff := 'p t
+
+      type ('a, 'p, 'es) t = ('a, 'p, 'es) result =
+        | Value : 'a @@ global many -> ('a, 'p, 'es) t
+        | Exception : exn @@ global many -> ('a, 'p, 'es) t
+        | Operation :
+            ('o, 'p, 'p eff) ops @@ c_arg global many
+            * ('o, ('a, 'p, 'es) result, 'es) Continuation.t @@ p_res
+            -> ('a, 'p, 'es) t
     end
   end
 
@@ -274,7 +290,15 @@ module Definitions (Handler : Handler) (Continuation : Continuation) = struct
        and type ('a, 'p, 'q, 'es) result := ('a, 'p, 'q, 'es) result
 
     module Result : sig @@ portable
-      type ('a, 'p, 'q, 'es) t = ('a, 'p, 'q, 'es) result
+      type ('p, 'q) eff := ('p, 'q) t
+
+      type ('a, 'p, 'q, 'es) t = ('a, 'p, 'q, 'es) result =
+        | Value : 'a @@ global many -> ('a, 'p, 'q, 'es) t
+        | Exception : exn @@ global many -> ('a, 'p, 'q, 'es) t
+        | Operation :
+            ('o, 'p, 'q, ('p, 'q) eff) ops @@ c_arg global many
+            * ('o, ('a, 'p, 'q, 'es) result, 'es) Continuation.t @@ p_res
+            -> ('a, 'p, 'q, 'es) t
     end
   end
 
