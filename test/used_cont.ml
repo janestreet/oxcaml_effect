@@ -6,7 +6,7 @@ module Eff = Handled_effect.Make (struct
 
 let r = ref (None : (unit, int, unit) Eff.Continuation.t option)
 
-let%expect_test ("used continuation test" [@tags "runtime5-only"]) =
+let%expect_test "used continuation test" =
   let rec handle = function
     | Eff.Value n -> assert (n = 42)
     | Eff.Exception e -> raise e

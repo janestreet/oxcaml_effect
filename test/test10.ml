@@ -29,13 +29,13 @@ let e i =
     | Eff1.Value result -> result
     | Eff1.Exception exn -> raise exn
     | Eff1.Operation (Peek, k) ->
-      let _, k = Continuation.get_callstack k 100 in
+      ignore (Continuation.get_callstack (borrow_ k) 100 : Printexc.raw_backtrace);
       handle (continue k 42 [])
   in
   Random.int i + handle (Eff1.run (fun h -> d h i))
 ;;
 
-let%expect_test ("different effects" [@tags "runtime5-only"]) =
+let%expect_test "different effects" =
   ignore (e 1 : int);
   print_string "ok\n";
   [%expect {| ok |}]

@@ -35,10 +35,7 @@ module type Continuation = sig
 
   (** [get_callstack c n] returns a description of the top of the call stack on the
       continuation [c], with at most [n] entries. *)
-  val get_callstack
-    :  ('a, 'b, 'es) t @ unique
-    -> int
-    -> Backtrace.t Modes.Aliased.t * ('a, 'b, 'es) t @ unique
+  val get_callstack : ('a, 'b, 'es) t @ local -> int -> Backtrace.t
 end
 
 module Definitions (Handler : Handler) (Continuation : Continuation) = struct

@@ -19,25 +19,25 @@ let rec handle = function
     handle (Handled_effect.continue k n [])
 ;;
 
-let%expect_test ("cross capsule data sharing" [@tags "runtime5-only"]) =
+let%expect_test "cross capsule data sharing" =
   handle
     (Eff.Contended.run (fun h ->
-       let (P k) = Capsule.Expert.create () in
+       let (P k) = Capsule.Prim.create () in
        let #( { Basement.Stdlib_shim.Modes.Many.many =
                   { Basement.Stdlib_shim.Modes.Aliased.aliased = x }
               }
             , k )
          =
-         Capsule.Expert.Key.access k ~f:(fun access ->
+         Capsule.Prim.Key.access k ~f:(fun access ->
            { Basement.Stdlib_shim.Modes.Many.many =
                { Basement.Stdlib_shim.Modes.Aliased.aliased =
-                   Capsule.Expert.Data.wrap ~access (ref 4)
+                   Capsule.Prim.Data.wrap ~access (ref 4)
                }
            })
        in
        let #((), _) =
-         Capsule.Expert.Key.with_password k ~f:(fun password ->
-           Capsule.Expert.Data.iter
+         Capsule.Prim.Key.with_password k ~f:(fun password ->
+           Capsule.Prim.Data.iter
              ~password
              ~f:(fun a -> Eff.Contended.perform h (Set !a))
              x [@nontail])

@@ -305,12 +305,6 @@ external perform_ : ('a, 'e) perform -> 'a @ once unique @@ portable = "%perform
 type last_fiber : immediate
 type (-'a, +'b) cont : value mod many
 
-let borrow (f : ('a, 'b) cont @ local -> 'c @ unique) (k : ('a, 'b) cont @ unique)
-  : 'c * ('a, 'b) cont
-  =
-  f k, Obj.magic_unique k
-;;
-
 external get_cont_callstack
   :  ('a, 'b) cont @ local
   -> int
@@ -444,12 +438,7 @@ type ('a, 'e, 'es) res =
       ('o, 'e) op @@ global many * ('o, 'a, 'e, 'es) continuation
       -> ('a, 'e, 'es) res
 
-let get_callstack (Cont { cont; mapping }) i =
-  let bt, cont =
-    borrow (fun cont -> { Modes.Aliased.aliased = get_cont_callstack cont i }) cont
-  in
-  bt, Cont { cont; mapping }
-;;
+let get_callstack (Cont { cont; _ }) i = get_cont_callstack cont i
 
 let rec handle
   : type a e es.
@@ -461,7 +450,7 @@ let rec handle
   | Op (op, handler, k, last_fiber) ->
     (match Raw_handler.is_zero handler with
      | Some Equal ->
-       let (), k = borrow (fun k -> cont_set_last_fiber k last_fiber) k in
+       cont_set_last_fiber (borrow_ k) last_fiber;
        Operation (op, Cont { cont = k; mapping })
      | None ->
        let handler = Raw_handler.weaken handler in
@@ -562,7 +551,6 @@ module DRF : sig @@ portable
   val run
     :  ('e Handler.t @ local portable -> 'a) @ once
     -> ('a, 'e, unit) res @ once unique
-
   (* Returns a [res] to be [Obj.magic]ed into the contended result type with
      [op @@ contended]. *)
 
@@ -570,7 +558,6 @@ module DRF : sig @@ portable
     :  'es Handler.List.t @ local portable
     -> (('e * 'es) Handler.List.t @ local portable -> 'a) @ once
     -> ('a, 'e, 'es) res @ once unique
-
   (* Returns a [res] to be [Obj.magic]ed into the contended result type with
      [op @@ contended]. *)
 end = struct
@@ -670,10 +657,7 @@ module Continuation = struct
   (* This type has an unexpressible constraint that ['b] is a type that can safely be
      [Obj.magic]ed from [(c, e, es) res] *)
 
-  let get_callstack (Continuation cont) i =
-    let bt, cont = get_callstack cont i in
-    bt, Continuation cont
-  ;;
+  let get_callstack (Continuation cont) i = get_callstack cont i
 end
 
 let continue (type a b es) (k : (a, b, es) Continuation.t) v hs =

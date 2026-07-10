@@ -78,7 +78,7 @@ let handle comp =
   Format.printf "%d@." (handle (Eff1.run comp))
 ;;
 
-let%expect_test ("basic effect handling" [@tags "runtime5-only"]) =
+let%expect_test "basic effect handling" =
   handle comp1;
   handle comp2;
   handle comp3;
@@ -115,7 +115,7 @@ let rec run_both a b =
 
 let comp2 h = Eff1.perform h (Xchg 21) * Eff1.perform h (Xchg 21)
 
-let%expect_test ("bidirectional communication" [@tags "runtime5-only"]) =
+let%expect_test "bidirectional communication" =
   let x, y = run_both (step comp1) (step comp2) in
   Format.printf ">> %d %d" x y;
   [%expect {| >> 42 0 |}]
@@ -178,7 +178,7 @@ let run main : unit =
   handle (Eff2.run main)
 ;;
 
-let%expect_test ("concurrent scheduler" [@tags "runtime5-only"]) =
+let%expect_test "concurrent scheduler" =
   run (fun h ->
     fork h (fun h ->
       Format.printf "[t1] Sending 0\n";
@@ -231,12 +231,12 @@ let baz () =
   handle (Eff4.run bar)
 ;;
 
-let%expect_test ("nested effect handlers" [@tags "runtime5-only"]) =
+let%expect_test "nested effect handlers" =
   Format.printf "%s" (baz ());
   [%expect {| Hello, world! Coucou! Hello, world! |}]
 ;;
 
-let%expect_test ("discontinuation" [@tags "runtime5-only"]) =
+let%expect_test "discontinuation" =
   Format.printf
     "%s"
     (let rec handle = function
@@ -251,7 +251,7 @@ let%expect_test ("discontinuation" [@tags "runtime5-only"]) =
   [%expect {| Discontinued |}]
 ;;
 
-let%expect_test ("one-shot continuations" [@tags "runtime5-only"]) =
+let%expect_test "one-shot continuations" =
   try
     Format.printf "%d"
     @@
@@ -291,7 +291,7 @@ let string_iter f s =
   done
 ;;
 
-let%expect_test ("iterator" [@tags "runtime5-only"]) =
+let%expect_test "iterator" =
   let s = invert ~iter:(fun yield -> string_iter yield "OCaml") in
   let next = OnceSeq.to_dispenser s in
   let rec loop () =
@@ -328,7 +328,7 @@ let run comp =
   handle_send (Eff6.run comp)
 ;;
 
-let%expect_test ("send-receive protocol" [@tags "runtime5-only"]) =
+let%expect_test "send-receive protocol" =
   run (fun h ->
     Format.printf "Send 42\n";
     Eff6.perform h (Send 42);

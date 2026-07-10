@@ -37,7 +37,7 @@ let next t =
        Some i)
 ;;
 
-let%expect_test ("portable continuations" [@tags "runtime5-only"]) =
+let%expect_test "portable continuations" =
   print_endline "Starting in domain 0";
   let t =
     create (fun h ->

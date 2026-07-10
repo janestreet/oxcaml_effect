@@ -29,7 +29,7 @@ let rec nest h n =
       nest h (n - 1)))
 ;;
 
-let%expect_test ("reperforming effects - success case" [@tags "runtime5-only"]) =
+let%expect_test "reperforming effects - success case" =
   let rec handle = function
     | Eff1.Value v -> Printf.printf "= %d\n" v
     | Eff1.Exception e -> raise e
@@ -52,7 +52,7 @@ let%expect_test ("reperforming effects - success case" [@tags "runtime5-only"]) 
     |}]
 ;;
 
-let%expect_test ("reperforming effects - exception case" [@tags "runtime5-only"]) =
+let%expect_test "reperforming effects - exception case" =
   let rec handle = function
     | Eff1.Value _ -> assert false
     | Eff1.Exception e -> Printf.printf "%s\n" (Printexc.to_string e)

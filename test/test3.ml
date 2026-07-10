@@ -8,7 +8,7 @@ module Eff = Handled_effect.Make (struct
 
 open Eff
 
-let%expect_test ("exception handling" [@tags "runtime5-only"]) =
+let%expect_test "exception handling" =
   let handle = function
     | Value v -> v
     | Exception X -> 10
