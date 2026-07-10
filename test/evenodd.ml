@@ -15,7 +15,7 @@ and handle = function
   | Exception e -> raise e
 ;;
 
-let%expect_test ("evenodd" [@tags "runtime5-only"]) =
+let%expect_test "evenodd" =
   let n = 100_000 in
   Printf.printf "even %d is %B\n%!" n (even n);
   [%expect {| even 100000 is true |}]

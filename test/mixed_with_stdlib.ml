@@ -9,9 +9,7 @@ module%test Without_argument = struct
       type 'a t = 'a op
     end)
 
-  let%expect_test ("throw stdlib effect past an oxcaml effect handler"
-    [@tags "runtime5-only"])
-    =
+  let%expect_test "throw stdlib effect past an oxcaml effect handler" =
     Stdlib.Effect.Deep.try_with
       (fun () ->
         match Eff.run (fun _ -> Stdlib.Effect.perform Stdlib_eff) with
@@ -41,9 +39,7 @@ module%test With_argument = struct
       type 'a t = 'a op
     end)
 
-  let%expect_test ("throw stdlib effect past an oxcaml effect handler"
-    [@tags "runtime5-only"])
-    =
+  let%expect_test "throw stdlib effect past an oxcaml effect handler" =
     let res =
       Stdlib.Effect.Deep.try_with
         (fun () ->

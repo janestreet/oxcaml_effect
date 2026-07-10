@@ -10,7 +10,7 @@ open Eff
 
 let f h = perform h (Foo 3) (* 3 + 1 *) + perform h (Foo 3) (* 3 + 1 *)
 
-let%expect_test ("multiple effects" [@tags "runtime5-only"]) =
+let%expect_test "multiple effects" =
   let r =
     let rec handle = function
       | Value v -> v

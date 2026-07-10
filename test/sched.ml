@@ -96,7 +96,7 @@ let test h =
   "ok"
 ;;
 
-let%expect_test ("scheduler test" [@tags "runtime5-only"]) =
+let%expect_test "scheduler test" =
   let `Finished = run test in
   [%expect {| A+,+B.C,D,[]!E. |}]
 ;;

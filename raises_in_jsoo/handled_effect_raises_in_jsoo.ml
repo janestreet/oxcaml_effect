@@ -301,10 +301,6 @@ external perform_ : ('a, 'e) perform -> 'a = "%perform"
 type last_fiber [@@immediate]
 type (-'a, +'b) cont
 
-let borrow (f : ('a, 'b) cont -> 'c) (k : ('a, 'b) cont) : 'c * ('a, 'b) cont =
-  f k, Obj.magic_unique k
-;;
-
 external get_cont_callstack
   :  ('a, 'b) cont
   -> int
@@ -352,7 +348,7 @@ let with_stack valuec exnc effc f x =
 
 let with_cont cont f x =
   if not (is_runtime5 ()) then failwith "Effects require the OCaml 5 runtime.";
-  let fiber, cont = borrow (fun k -> cont_last_fiber k) cont in
+  let fiber = cont_last_fiber cont in
   Must_not_enter_gc.resume (Must_not_enter_gc.take_cont_noexc cont) f x fiber
 [@@inline never]
 ;;
@@ -428,12 +424,7 @@ type ('a, 'e, 'es) res =
   | Exception : exn -> ('a, 'e, 'es) res
   | Operation : ('o, 'e) op * ('o, 'a, 'e, 'es) continuation -> ('a, 'e, 'es) res
 
-let get_callstack (Cont { cont; mapping }) i =
-  let bt, cont =
-    borrow (fun cont -> { Modes.Aliased.aliased = get_cont_callstack cont i }) cont
-  in
-  bt, Cont { cont; mapping }
-;;
+let get_callstack (Cont { cont; _ }) i = get_cont_callstack cont i
 
 let rec handle : type a e es. es Mapping.t -> (a, e * es) r -> (a, e, es) res =
   fun mapping -> function
@@ -442,7 +433,7 @@ let rec handle : type a e es. es Mapping.t -> (a, e * es) r -> (a, e, es) res =
   | Op (op, handler, k, last_fiber) ->
     (match Raw_handler.is_zero handler with
      | Some Equal ->
-       let (), k = borrow (fun k -> cont_set_last_fiber k last_fiber) k in
+       cont_set_last_fiber k last_fiber;
        Operation (op, Cont { cont = k; mapping })
      | None ->
        let handler = Raw_handler.weaken handler in
@@ -533,7 +524,6 @@ module DRF : sig
     -> ('a, 'b, 'e, 'es) continuation
 
   val run : ('e Handler.t -> 'a) -> ('a, 'e, unit) res
-
   (* Returns a [res] to be [Obj.magic]ed into the contended result type with
      [op @@ contended]. *)
 
@@ -541,7 +531,6 @@ module DRF : sig
     :  'es Handler.List.t
     -> (('e * 'es) Handler.List.t -> 'a)
     -> ('a, 'e, 'es) res
-
   (* Returns a [res] to be [Obj.magic]ed into the contended result type with
      [op @@ contended]. *)
 end = struct
@@ -632,10 +621,7 @@ module Continuation = struct
   (* This type has an unexpressible constraint that ['b] is a type that can safely be
      [Obj.magic]ed from [(c, e, es) res] *)
 
-  let get_callstack (Continuation cont) i =
-    let bt, cont = get_callstack cont i in
-    bt, Continuation cont
-  ;;
+  let get_callstack (Continuation cont) i = get_callstack cont i
 end
 
 let continue (type a b es) (k : (a, b, es) Continuation.t) v hs =
